@@ -1,0 +1,375 @@
+---
+title: "STATS 412 - Final Project - Data Cleaning"
+author: "Betty Hwang, Mariano Aloiso"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE}
+set.seed(123)
+library(ggplot2)
+```
+
+# How They Met
+Question 24 asks the subject how they met their partner.
+Originally there were over 40 possible answers,
+but we have reduced them to 6 categories in the data cleaning process:
+1. Friends
+2. Family
+3. Online
+4. Social Events
+5. Work
+6. School
+
+Each category is one-hot encoded, so the subject can have multiple answers.
+Load data and select the subset of people that are in a relationship in wave 1.
+```{r}
+filenameQ24 <- "data/howTheyMet.csv"
+q24 <- read.csv(filenameQ24)
+q24 <- q24[q24$w1_partnership_status %in% c(1,2),]
+q24 <- subset(q24, select = -c(w1_partnership_status) )
+```
+
+We want to find whether there is a relationship between the way the subject met their partner
+and whether they are still in a relationship in wave 2. Use logistic regression to find
+the relationship.
+
+Create train and test sets
+```{r}
+train <- sample(1:nrow(q24), 0.8 * nrow(q24))
+test <- setdiff(1:nrow(q24), train)
+```
+
+Run logistic regression
+```{r}
+q24_logistic_regression <- glm(
+  w2_section ~ .,
+  data = q24[train, ],
+  family = "binomial")
+summary(q24_logistic_regression)
+```
+
+Evaluate the model on the test set
+```{r}
+pred <- predict(q24_logistic_regression, q24[test, ], type = "response")
+pred <- ifelse(pred > 0.5, 1, 0)
+table(pred, q24[test, ]$w2_section)
+```
+
+
+# Analyze HCMST
+
+Load data
+```{r}
+filenameClean <- "data/HCMST_clean.csv"
+HCMST <- read.csv(filenameClean)
+```
+
+Select the subset of people that are in a relationship in wave 1.
+These are the people with a 1 or 2 in the w1_partnership_status column.
+```{r}
+HCMST <- HCMST[HCMST$w1_partnership_status %in% c(1,2),]
+HCMST <- subset(HCMST, select = -c(w1_partnership_status) )
+```
+
+Drop "caseid_new"
+```{r}
+HCMST <- HCMST[, !(names(HCMST) %in% c("caseid_new"))]
+```
+
+Drop "w1_married" and "w1_ppmarit" as they are redundant
+```{r}
+HCMST <- HCMST[, !(names(HCMST) %in% c("w1_married", "w1_ppmarit"))]
+```
+
+## Missing Values
+
+Replace missing values in w1_time_from_met_to_rel with median
+```{r}
+HCMST$w1_time_from_met_to_rel[is.na(HCMST$w1_time_from_met_to_rel)] <- median(HCMST$w1_time_from_met_to_rel, na.rm = TRUE)
+```
+
+Row count before dropping rows with missing values
+```{r}
+nrow(HCMST)
+```
+Drop rows with any missing values
+```{r}
+HCMST <- na.omit(HCMST)
+nrow(HCMST)
+```
+
+## Feature Engineering
+
+One-hot encode the following columns:
+- w1_q11
+- w1_q12
+- w1_partyid7
+- w1_ppagecat
+```{r}
+perform_one_hot_encoding <- function(data, column) {
+  if (length(levels(data[[column]])) > 1) {
+    one_hot_encoded <- model.matrix(~ 0 + data[[column]], data = data)
+    levels_names <- levels(data[[column]])
+    colnames(one_hot_encoded) <- paste0(column, "_", levels_names)
+    print(colnames(one_hot_encoded))
+    data <- cbind(data, one_hot_encoded)
+    return(data)
+  } else {
+    cat("Skipping", column, "as it has less than 2 levels.\n")
+    return(data)
+  }
+}
+
+categoricalColumns <- c("w1_q11", "w1_q12", "w1_partyid7", "w1_ppagecat")
+
+for (col in categoricalColumns) {
+  HCMST[[col]] <- as.factor(HCMST[[col]])
+}
+
+for (col in categoricalColumns) {
+  HCMST <- perform_one_hot_encoding(HCMST, col)
+}
+
+HCMST <- HCMST[, !(names(HCMST) %in% categoricalColumns)]
+```
+
+Make w2_section a factor variable. This is the outcome variable.
+```{r}
+HCMST$w2_section <- as.factor(HCMST$w2_section)
+```
+
+Plot the distribution of the outcome variable. Relabel 0 and 1 to "No" and "Yes" respectively.
+Make it into a percentage plot.
+```{r}
+ggplot(HCMST, aes(x = w2_section)) +
+  geom_bar(aes(y = (..count..)/sum(..count..))) +
+  scale_x_discrete(labels = c("No", "Yes")) +
+  labs(x = "In the same relationship in wave 2", y = "Percentage") +
+  ggtitle("Distribution of w2_section") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  geom_text(
+    aes(label = scales::percent((..count..)/sum(..count..)),
+        y = (..count..)/sum(..count..)),
+    stat = "count",
+    vjust = -0.5)
+```
+
+The dataset is imbalanced. There are more people that are still in the same relationship in wave 2.
+We will need to take this into account when we evaluate the models.
+
+Show final dimensions of the dataset for feature importance analysis
+```{r}
+dim(HCMST)
+```
+
+# Feature Selection
+
+## Random Forest
+
+The resulting dataset has 84 features. These features are a mix of categorical and numerical.
+They also contain missing values. Due to the high number of features, it is not feasible to
+impute the missing values. We will first use random forest to find the most important features.
+We will then use these features in the next models.
+Random forest can also handle imbalanced datasets.
+
+```{r, echo=FALSE}
+library(randomForest)
+library(caret)
+```
+
+Create train and test sets
+```{r}
+train <- sample(1:nrow(HCMST), 0.8 * nrow(HCMST))
+test <- setdiff(1:nrow(HCMST), train)
+
+HCMST_train <- HCMST[train, ]
+HCMST_test <- HCMST[test, ]
+```
+
+Calculate the performance of a baseline model that always predicts the most common class (1)
+```{r}
+baseline <- rep(1, nrow(HCMST_test))
+baseline <- factor(baseline, levels = levels(HCMST_test$w2_section))
+table(baseline, HCMST_test$w2_section, dnn = c("Predicted", "Actual"))
+confusionMatrix(baseline, HCMST_test$w2_section)
+```
+
+Calculate weights for the imbalanced dataset
+```{r}
+class_counts <- table(HCMST_train$w2_section)
+total_samples <- nrow(HCMST_train)
+class_weights <- total_samples / (length(levels(HCMST_train$w2_section)) * class_counts)
+```
+
+Run random forest using weights to handle the imbalanced dataset
+```{r}
+rf <- randomForest(
+  w2_section ~ .,
+  data = HCMST_train,
+  importance = TRUE,
+  class.weights = class_weights)
+```
+
+Evaluate the model on the test set
+```{r}
+pred <- predict(rf, HCMST_test)
+table(pred,
+      HCMST_test$w2_section,
+      dnn = c("Predicted", "Actual"))
+confusionMatrix(pred, HCMST_test$w2_section)
+```
+
+Show the importance of each feature
+```{r}
+rf_importance <- importance(rf)
+rf_importance <- data.frame(Feature = rownames(rf_importance), rf_importance)
+rf_importance <- rf_importance[order(rf_importance$MeanDecreaseGini, decreasing = TRUE), ]
+rf_importance
+```
+
+Plot all features
+```{r, fig.width = 6, fig.height = 20}
+ggplot(rf_importance, aes(x = MeanDecreaseGini, y = reorder(Feature, MeanDecreaseGini))) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(x = "Mean Decrease in Gini", y = "Features") +
+  ggtitle("Features by Mean Decrease in Gini") +
+  theme(axis.text.y = element_text(hjust = 1),
+        plot.title = element_text(hjust = 0.5))
+```
+
+Show the top features in a plot
+```{r}
+nFeatures <- 15
+topFeatures <- rf_importance[1:nFeatures, ]
+ggplot(topFeatures, aes(x = MeanDecreaseGini, y = reorder(Feature, MeanDecreaseGini))) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(x = "Mean Decrease in Gini", y = "Features") +
+  ggtitle("Top 15 Features by Mean Decrease in Gini") +
+  theme(axis.text.y = element_text(hjust = 1),
+        plot.title = element_text(hjust = 0.5))
+```
+
+For the next models, we will use the top 15 features selected by random forest.
+
+```{r}
+topFeatures <- topFeatures$Feature
+topFeatures <- c(topFeatures, "w2_section")
+HCMST_subset <- HCMST[, names(HCMST) %in% topFeatures]
+```
+
+Create train and test sets
+```{r}
+train <- sample(1:nrow(HCMST_subset), 0.8 * nrow(HCMST_subset))
+test <- setdiff(1:nrow(HCMST_subset), train)
+
+HCMST_subset_train <- HCMST_subset[train, ]
+HCMST_subset_test <- HCMST_subset[test, ]
+```
+Show nan in HCMST_subset_test
+```{r}
+colSums(is.na(HCMST_subset_test))
+```
+
+# Feature Importance
+# Baseline Model
+
+Calculate the performance of a baseline model that always predicts the most common class (1)
+```{r}
+baseline <- rep(1, nrow(HCMST_subset_test))
+baseline <- factor(baseline, levels = levels(HCMST_subset_test$w2_section))
+table(baseline, HCMST_subset_test$w2_section, dnn = c("Predicted", "Actual"))
+confusionMatrix(baseline, HCMST_subset_test$w2_section)
+```
+
+## Lasso Regression
+
+Run Lasso regression to estimate the impact of each
+feature on the outcome variable.
+
+```{r, echo=FALSE}
+library(glmnet)
+```
+
+Compute Lasso weights for train data to handle the imbalanced dataset
+```{r}
+y <- HCMST_subset_train$w2_section
+class_weights <- table(y)
+class_weights <- 1 / sqrt(table(y))
+subset_train_weights <- class_weights[y]
+```
+
+Fit a Lasso regression model on train data and evaluate it
+```{r}
+x <- model.matrix(w2_section ~ ., data = HCMST_subset_train)[, -1]
+y <- HCMST_subset_train$w2_section
+lasso <- cv.glmnet(
+  x,
+  y,
+  family = "multinomial",
+  type.measure = "class",
+  nfolds = 10,
+  weights = subset_train_weights)
+```
+
+Evaluate the model on the test set
+```{r}
+pred <- predict(
+  lasso,
+  as.matrix(HCMST_subset_test[, -which(names(HCMST_subset_test) == "w2_section")]),
+  type = "class")
+table(pred, HCMST_subset_test$w2_section, dnn = c("Predicted", "Actual"))
+pred <- as.factor(pred)
+confusionMatrix(pred, HCMST_subset_test$w2_section)
+```
+
+Plot the Lasso path
+```{r}
+plot(lasso)
+```
+
+Show the coefficients for the best lambda
+```{r}
+coef(lasso, s = "lambda.min")
+```
+
+## Principal Component Analysis
+
+Repeat analysis with PCA
+```{r, echo=FALSE}
+library(MASS)
+```
+
+Scale HCMST_subset and run PCA
+```{r}
+HCMST_subset_scaled <- scale(
+  HCMST_subset[, -which(names(HCMST_subset) == "w2_section")],
+  center = TRUE,
+  scale = TRUE)
+pca <- prcomp(HCMST_subset_scaled)
+summary(pca)
+```
+
+Plot the variance explained by each principal component
+```{r}
+plot(pca, type = "l")
+```
+
+Plot the cumulative variance explained by each principal component
+```{r}
+plot(cumsum(pca$sdev^2 / sum(pca$sdev^2)), type = "l")
+```
+
+Show the first principal component
+```{r}
+pca$rotation[, 1]
+```
+
+Show the second principal component
+```{r}
+pca$rotation[, 2]
+```
