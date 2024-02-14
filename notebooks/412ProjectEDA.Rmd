@@ -1,0 +1,500 @@
+---
+title: "STATS 412 Final Project EDA"
+author: "Suyeon Betty Hwang, Mariano Aloiso"
+date: "2023-12-02"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+# 1. Importing Data and Necessary Packages
+
+```{r}
+#Importing Packages
+library(dplyr)
+library(ggplot2)
+library(rlang)
+library(ggplot2)
+library(RColorBrewer)
+library(tidyverse)
+library(readr)
+col <- brewer.pal(5, "Set2")
+```
+
+```{r}
+#loading the data
+df <-read.csv("HCMST_clean (1).csv")
+howtheymet <- read.csv("howTheyMet.csv")
+dim(df) # 3510   89 
+dim(howtheymet)
+```
+
+Remove people who didn't answer w2_section (relationship status) question. In other words, remove people who are not in the 2020 survey.
+
+```{r}
+df<- df[!is.na(df$w2_section),]
+dim(df)
+```
+
+Transforming the categorical variable (whether in a relationship or not) into a binary variable. 1: still in a relationship, 0: not in a relationship. "A" (still married), "B" (still partnered) are both considered still in a relationship.
+
+```{r}
+df$w2_section <- ifelse(df$w2_section %in% c(1, 3), 1, 0)
+```
+
+```{r}
+#Selecting only a subset of data: only extract respondents who are in relationships:
+
+#We will do this by making the Partner Status into Binary Category
+df$w1_partnership_status_binary <- ifelse(df$w1_partnership_status %in% c(1,2), 1, 0)
+df$w1_partnership_status_binary
+
+table(df$w1_partnership_status_binary)
+
+df$w1_partnership_status_binary[df$w1_partnership_status_binary==0] <- "Unpartnered"
+df$w1_partnership_status_binary[df$w1_partnership_status_binary==1] <- "Partnered" 
+
+barplot(prop.table(table(df$w1_partnership_status_binary)),col = col, main = "2017 Partnership Status ")
+
+```
+
+From now on, we will work only with a subset of data: only the respondents who are in relationships. In order to do this, we will extract and make a subset of data:
+
+```{r}
+subset_df <- df[df$w1_partnership_status %in% c(1,2), ]
+single <- df[df$w1_partnership_status %in% c(3,4),]
+dim(single) #648 x 89
+dim(subset_df) #2862 x90
+```
+
+We will only work with 2862 observations who are in a relationship in Wave 1.
+
+# 2. EDA
+
+### Race and Gender Demography
+
+```{r}
+#Partner's Race Demography 
+
+subset_df$w1_q6b[subset_df$w1_q6b==-1] <-"Refused"
+subset_df$w1_q6b[subset_df$w1_q6b==1] <-"White"
+subset_df$w1_q6b[subset_df$w1_q6b==2] <-"Black"
+subset_df$w1_q6b[subset_df$w1_q6b==3] <-"Native American"
+subset_df$w1_q6b[subset_df$w1_q6b==4] <-"Asian"
+subset_df$w1_q6b[subset_df$w1_q6b==5] <-"Other"
+barplot(prop.table(table(subset_df$w1_q6b)), col = col, main = "Race of Partners")
+"Refused
+ 2,682 1 White
+ 314 2 Black or African American
+ 36 3 American Indian, Aleut, or
+ Eskimo
+ 158 4 Asian or Pacific Islander
+ 189 5 Other (please specify) "
+
+
+subset_df$w1_ppethm[subset_df$w1_ppethm==1] <-"White"
+subset_df$w1_ppethm[subset_df$w1_ppethm==2] <-"Black"
+subset_df$w1_ppethm[subset_df$w1_ppethm==3] <-"Other"
+subset_df$w1_ppethm[subset_df$w1_ppethm==4]  <-"Hispanic"
+subset_df$w1_ppethm[subset_df$w1_ppethm==5]  <-"Other"
+barplot(prop.table(table(subset_df$w1_ppethm)), col = col, main = "Race of Respondents")
+"2,503 1 White, Non-Hispanic
+ 311 2 Black, Non-Hispanic
+ 147 3 Other, Non-Hispanic
+ 438 4 Hispanic
+ 111 5 2+ Races, Non-Hispanic "
+
+```
+
+```{r}
+
+subset_df$w1_ppgender[subset_df$w1_ppgender==1] <-"Male"
+subset_df$w1_ppgender[subset_df$w1_ppgender==2] <-"Female"
+table(subset_df$w1_ppgender) #oroginal: 976: 1131
+barplot(table(subset_df$w1_ppgender), col = col, main = "Sex of the Respondents" )
+```
+
+```{r}
+table(subset_df$w1_xlgb)
+barplot(prop.table(table(subset_df$w1_xlgb)),col = col, main = "LGBTQ Sample Size" )
+"400 1 LGB sample
+ 3,110 2 gen pop"
+```
+
+Almost same number of male and female respondents.
+
+### Household Size
+
+```{r}
+table(subset_df$w1_pphhsize)
+barplot(prop.table(table(subset_df$w1_pphhsize)), col = col, main = "Household Size for People Who Are In Relationships")
+
+```
+
+Most of the respondents seem to live in a household size of two, which means with a partner and without a child yet.
+
+```{r}
+table(df$w1_pphhsize)
+barplot(prop.table(table(df$w1_pphhsize)), col = col, main = "Household Size for People Who Are In Relationships")
+```
+
+### Income Size
+
+```{r}
+#Income Size for Partnered People
+prop.table(table(subset_df$w1_ppincimp_cat))
+subset_df$w1_ppincimp_cat[subset_df$w1_ppincimp_cat == 1 ] <- "1. <40K"
+subset_df$w1_ppincimp_cat[subset_df$w1_ppincimp_cat == 2 ] <- "2. $40K - $75K"
+subset_df$w1_ppincimp_cat[subset_df$w1_ppincimp_cat == 3 ] <- "3.  $75K- $125K"
+subset_df$w1_ppincimp_cat[subset_df$w1_ppincimp_cat == 4 ] <- "4. > $125K"
+barplot(prop.table(table(subset_df$w1_ppincimp_cat)), col = col, main = "Income Size")
+
+
+#Income Size for Single Population
+single$w1_ppincimp_cat[single$w1_ppincimp_cat == 1 ] <- " 1. <40K"
+single$w1_ppincimp_cat[single$w1_ppincimp_catt == 2 ] <- " 2. $40K - $75K"
+single$w1_ppincimp_cat[single$w1_ppincimp_cat == 3 ] <- " 3. $75K- $125K"
+single$w1_ppincimp_cat[single$w1_ppincimp_cat == 4 ] <- "4.  > $125K"
+prop.table(table(single$w1_ppincimp_cat))
+barplot(prop.table(table(single$w1_ppincimp_cat)), col = col, main = "SingleIncome Size")
+```
+
+Respondents' incomes come from evenly distributed brackets.
+
+```{r}
+income_category <- c(rep(""))
+subset_df$w1_ppincimp_cat
+incomesize <- data.frame(subset_df$w1_ppincimp_cat, single$w1_ppincimp_cat)
+ggplot(incomesize, aes(fill=condition, y=value, x = ))
+```
+
+```{r}
+prop.table(table(subset_df$w1_pprent))
+prop.table(table(single$w1_pprent))
+par(mfrow = c(1,2))
+barplot(prop.table(table(subset_df$w1_pprent)), col = col, main = "Ownership of Residence")
+"2,472 1 Owned or being bought by you or
+ someone in your household
+ 932 2 Rented for cash
+ 106 3 Occupied without payment of
+ cash rent"
+
+barplot(prop.table(table(single$w1_pprent)), col = col, main = "Ownership of Residence for Single ")
+
+```
+
+Most of the subjects seem to own a property that they are living in, which could be an indicator of stability.
+
+### Martial and Relationship Status
+
+36% of the respondents are not married; 63% of the respondents are married.
+
+```{r}
+table(df$w1_ppmarit)
+barplot(table(df$w1_ppmarit), col = col, main = "Martial Status of Respondents in 2017")
+"1,986 1 Married
+ 138 2 Widowed
+ 328 3 Divorced
+ 69 4 Separated
+ 712 5 Never married
+ 277 6 Living with partner"
+
+prop.table(table(df$w1_ppmarit))
+```
+
+Most respondents are either married.
+
+```{r}
+df$w1_max_relation_status[df$w1_max_relation_status==0] <-"Never Married or Cohab"
+df$w1_max_relation_status[df$w1_max_relation_status==1] <-"Cohab But Not Married"
+df$w1_max_relation_status[df$w1_max_relation_status==2] <-"Married"
+
+barplot(prop.table(table(df$w1_max_relation_status)), col = col, main = "Highest Martial Status 2017")
+```
+
+```{r}
+table(subset_df$w1_xlgb)
+barplot(prop.table(table(subset_df$w1_xlgb)),col = col, main = "LGBTQ Sample Size" )
+"400 1 LGB sample
+ 3,110 2 gen pop"
+
+```
+
+### Hometown
+
+```{r}
+
+table(subset_df$w1_PPREG4)
+subset_df$w1_PPREG4[subset_df$w1_PPREG4==1] <- "Northeast"
+subset_df$w1_PPREG4[subset_df$w1_PPREG4==2] <- "Midwest"
+subset_df$w1_PPREG4[subset_df$w1_PPREG4==3] <- "South"
+subset_df$w1_PPREG4[subset_df$w1_PPREG4==4] <- "West"
+
+barplot(prop.table(table(subset_df$w1_PPREG4)), col = col, main = "Subject's Birth Region" )
+
+"641 1 Northeast
+ 770 2 Midwest
+ 1,268 3 South
+ 831 4 West "
+
+table(single$w1_PPREG4)
+prop.table(table(subset_df$w1_PPREG4))
+```
+
+### 
+
+```{r}
+hist(subset_df$w1_q16, xlab = " Number of Relatives Seen" , col = col, main = "Number of Relatives Seen")
+```
+
+### Age
+
+```{r}
+summary(subset_df$w1_q9)
+table(subset_df$w1_q9)
+hist(subset_df$w1_q9, col = col, xlab = "age" , main = "Partner's Age" )
+
+prop.table(table(subset_df$w1_ppagecat))
+barplot(prop.table(table(subset_df$w1_ppagecat)), col = col, main = "Respondent's Age")
+
+```
+
+Partner's age seems to be normally distributed. Most of the partner's age was between 50 and 60.
+
+```{r}
+boxplot(subset_df$w1_age_when_met, col = col, main = "Age When They Met Their Partner" )
+hist(subset_df$w1_age_when_met, col = col, main = "Age When They Met Their Partner" )
+
+```
+
+Most of the respondents have met their partner around their twenties.
+
+```{r}
+agegroup <- prop.table(table(subset_df$w1_ppagecat, subset_df$w2_section))
+barplot(agegroup, col = col, legend.text = c("married", "Partnered, not married" , "Unpartnered ", "Never had a partner")) 
+```
+
+### Education Status
+
+```{r}
+#Respondent's education: 
+#subset_df$w1_ppeducat <- factor(subset_df$w1_ppeducat, levels = c("Less Than High School", "High School", "Some College", "Bachelor's Degree or Higher"))
+subset_df$w1_ppeducat[subset_df$w1_ppeducat==1] <- "Less Than High School"
+subset_df$w1_ppeducat[subset_df$w1_ppeducat==2] <- "High School"
+subset_df$w1_ppeducat[subset_df$w1_ppeducat==3] <- "Some College"
+subset_df$w1_ppeducat[subset_df$w1_ppeducat==4] <- "Bachelor's Degree or Higher"
+prop.table(table(subset_df$w1_ppeducat))
+barplot(prop.table(table(subset_df$w1_ppeducat)), col = col, main = "Respondent's Education Level")
+
+"286 1 Less than high school
+ 932 2 High school
+ 1,029 3 Some college
+ 1,263 4 Bachelor's degree or higher "
+```
+
+```{r}
+#single_ed <- factor(single$w1_ppeducat, levels = c("Less Than High School", "High School", "Some College", "Bachelor's Degree or Higher")) #doesn't work. 
+
+single$w1_ppeducat[single$w1_ppeducat==1] <- "Less Than High School"
+single$w1_ppeducat[single$w1_ppeducat==2] <- "High School"
+single$w1_ppeducat[single$w1_ppeducat==3] <- "Some College"
+single$w1_ppeducat[single$w1_ppeducat==4] <- "Bachelor's Degree or Higher"
+
+table(single$w1_ppeducat)
+barplot(prop.table(table(single$w1_ppeducat)), col = col, main = "Single Education Level")
+
+```
+
+Most of the respondents have obtained Bachelor's degree or higher.
+
+```{r}
+par(mfrow = c(1,2))
+boxplot(subset_df$w1_subject_mother_yrsed, col = col, main = "Partner's Mother's Educational Attainment" )
+boxplot(subset_df$w1_partner_mother_yrsed, col = col, main = "Subject's Mother's Educational Attainment" )
+
+```
+
+It seems like the respondents' and partners' mother's education attainment is similar.
+
+```{r}
+prop.table(table(subset_df$w1_q12))
+barplot(prop.table(table(subset_df$w1_q12)), col =col, main = "Partner Political Afflication" )
+
+"38 -1 Refused
+ 510 1 Strong Republican
+ 165 2 Not Strong Republican
+ 412 3 Leans Republican
+ 1,025 4 Undecided/Independent/Other
+ 504 5 Leans Democrat
+ 210 6 Not Strong Democrat
+ 530 7 Strong Democrat"
+```
+
+The biggest number of politcal affliation of the partner is undecieded/independent next to strong republican.
+
+```{r}
+table(subset_df$w1_sex_frequency)
+barplot(table(subset_df$w1_sex_frequency), col =col, main = "Sex Frequency ")
+
+"170 -1 Refused
+ 86 1 Once a day or more
+ 368 2 3 to 6 times a week
+ 744 3 Once or twice a week
+ 519 4 2 to 3 times a month
+ 969 5 Once a month or less
+ 654 ."
+
+boxplot(subset_df$w1_weekly_sex_frequency, col =col, main = "Weekly Sex Frequency ")
+
+table(subset_df$w1w2_sex_freq_diff) #check this one
+```
+
+Most couples have sex once a week or once a month/less. Additionally, there wasn't any difference between sex frequency from 2017 and 2020.
+
+### Income and Employment Status
+
+```{r}
+table(subset_df$w1_ppincimp_cat)
+prop.table(table(subset_df$w1_ppincimp_cat))
+barplot(prop.table(table(subset_df$w1_ppincimp_cat)), col = col, main = " Income Categories of Partner")
+"1,001 1 <$40K
+ 848 2 $40K-$75K
+ 876 3 $75K-$125K
+ 785 4 >$125K "
+```
+
+Partners' incomes seem evenly distributed among four different income brackets.
+
+```{r}
+
+subset_df$w1_ppwork[subset_df$w1_ppwork==1] <- "Working as an Employee"
+subset_df$w1_ppwork[subset_df$w1_ppwork==2] <- "Self-Employed"
+subset_df$w1_ppwork[subset_df$w1_ppwork==3] <- "Not Working (Layoff)"
+subset_df$w1_ppwork[subset_df$w1_ppwork==4] <- "Not Working- looking for work"
+subset_df$w1_ppwork[subset_df$w1_ppwork==5] <- "Retired"
+subset_df$w1_ppwork[subset_df$w1_ppwork==6] <- "Disabled"
+subset_df$w1_ppwork[subset_df$w1_ppwork==7] <- "Other"
+
+table(subset_df$w1_ppwork)
+barplot(prop.table(table(subset_df$w1_ppwork)),col = col, main = "Partner Employment Status" )
+
+"w1_ppwork_percent <- w1_ppwork %>% 
+                    count(category) %>%
+                    mutate(percentage = n/ sum(n)*100)"
+ "
+ 1 Working - as a paid employee
+ 278 2 Working - self-employed
+ 11 3 Not working - on temporary
+ layoff from a job
+ 178 4 Not working - looking for work
+ 663 5 Not working - retired
+ 184 6 Not working - disabled
+ 228 7 Not working - other "
+```
+
+Most of the respondent's partners are working as an employee and the second highest common employment status of the partner is retired.
+
+```{r}
+table(single$w1_ppwork)
+barplot(prop.table(table(single$w1_ppwork)), col = col, main = "Single Employment Status")
+```
+
+### Relationship Status/ Quality
+
+```{r}
+#Relationship Status of the Entire Dataset: 
+table(df$w1_partnership_status) 
+
+barplot(prop.table(table(df$w1_partnership_status)), col = col, main = "2017 Relationship Status")
+#1: married, 2: partnered, not married, 3: unpartnered, has had past partner, 4: never had a partner
+```
+
+```{r}
+#Partner Status (Binary) 2020
+
+table(df$w2_section) #all the 2017 data 
+
+table(subset_df$w2_section)
+subset_df$w2_section[subset_df$w2_section==0] <- "Not With the Same Partner"
+subset_df$w2_section[subset_df$w2_section==1] <- "With the Same Partner" 
+
+barplot(prop.table(table(df$w2_section)),col = col, main = "2020 Partnership Status for All Respondents from 2017")
+
+barplot(prop.table(table(subset_df$w2_section)),col = col, main = "2020 Partnership Status for Respondents Who Were Partnered in 2017 ")
+```
+
+Most couples from 2017 are still with the same partner in 2020.
+
+```{r}
+subset_df$w1_q34[subset_df$w1_q34 ==1] <- "Excellent"
+subset_df$w1_q34[subset_df$w1_q34 ==2] <- "Good"
+subset_df$w1_q34[subset_df$w1_q34 ==3] <- "Fair"
+subset_df$w1_q34[subset_df$w1_q34 ==4] <- "Poor"
+subset_df$w1_q34[subset_df$w1_q34 ==5] <- "Very Poor"
+table(subset_df$w1_q34)
+barplot(prop.table(table(subset_df$w1_q34)),  col = col, main = "2017 Relationship Quality")
+"1,706 1 Excellent
+ 884 2 Good
+ 202 3 Fair
+ 32 4 Poor
+ 23 5 Very Poor
+ 663 . "
+```
+
+Most of the respondents from 2017 in the study seem to be in an excellent and good relationships.
+
+###How They Met Data Set
+
+```{r}
+dim(howtheymet) #2107 observations
+
+#partnered subjects
+howtheymet_1<- howtheymet[howtheymet$w1_partnership_status %in% c(1,2), ]
+
+dim(howtheymet_1) #1716 observations
+
+par(mfrow = c(2,3))
+barplot(prop.table(table(howtheymet_1$friends)), col = col, main = "Met Through Friends")
+
+barplot(prop.table(table(howtheymet_1$family)), col = col, main = "Met Through Family")
+
+barplot(prop.table(table(howtheymet_1$online)), col = col, main = "Met Through Online")
+
+barplot(prop.table(table(howtheymet_1$social_events)), col = col, main = "Met Through Social Events")
+
+barplot(prop.table(table(howtheymet_1$work)), col = col, main = "Met Through Work")
+
+barplot(prop.table(table(howtheymet_1$school)), col = col, main = "Met Through School")
+
+```
+
+```{r}
+
+prop.table(table(howtheymet_1$online))
+```
+
+```{r}
+#Couples who remained couples 
+couples_who_stayed <- howtheymet_1 %>% filter(howtheymet_1$w2_section==1)
+dim(couples_who_stayed) #1488
+
+par(mfrow = c(2,3))
+barplot(prop.table(table(couples_who_stayed$friends)), col = col, main = "Met Through Friends")
+
+barplot(prop.table(table(couples_who_stayed$family)), col = col, main = "Met Through Family")
+
+barplot(prop.table(table(couples_who_stayed$online)), col = col, main = "Met Through Online")
+
+barplot(prop.table(table(couples_who_stayed$social_events)), col = col, main = "Met Through Social Events")
+
+barplot(prop.table(table(couples_who_stayed$work)), col = col, main = "Met Through Work")
+
+barplot(prop.table(table(couples_who_stayed$school)), col = col, main = "Met Through School")
+
+```
+
+```{r}
+
+```
+
